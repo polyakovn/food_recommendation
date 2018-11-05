@@ -1,20 +1,21 @@
-import requests, time, threading, sys, os
+import requests, time, threading, sys, os, webbrowser
 from threading import Thread
 from bs4 import BeautifulSoup
 from random import shuffle
 
 class Restaurant():
 
-    def __init__(self, name, address, categories):
+    def __init__(self, name, address, categories, url):
         self.name = name
         self.address = address
         self.categories = categories
+        self.url = url
 
 def find_restaurant(url, location, cuisine):
-    for page_num in range(10):
+    for page_num in range(10): #looks through the first ten pages of reviews (that are sorted by rating)
         reviewers = find_reviewers(url, page_num)
         for reviewer in reviewers:
-            t = Thread(target=find_reviewers_reviews, daemon = True, args=(reviewer, location, cuisine))
+            t = Thread(target=find_reviewers_reviews, daemon = True, args=(reviewer, location, cuisine, url))
             t.start()
     return "Sorry, we weren't able to find a restaurant that matches your search criteria. Please try again."
 
@@ -50,7 +51,7 @@ def four_stars_or_less(review):
             review.find(class_="i-stars i-stars--regular-2 rating-large") or
             review.find(class_="i-stars i-stars--regular-1 rating-large"))
 
-def find_reviewers_reviews(reviewer_id, desired_location, desired_cuisine):
+def find_reviewers_reviews(reviewer_id, desired_location, desired_cuisine, url):
     base_url = 'https://www.yelp.com/user_details_reviews_self?userid=' + reviewer_id + '&review_sort=rating&rec_pagestart='
     page_num = 0
     fivestar_reviews_left = True
@@ -61,10 +62,12 @@ def find_reviewers_reviews(reviewer_id, desired_location, desired_cuisine):
             restaurant_info = review.find(class_="media-story")
             if restaurant_info and review.find(class_="i-stars i-stars--regular-5 rating-large"):
                 restaurant = make_restaurant_obj(restaurant_info)
-                if fits_search_criteria(restaurant, desired_location, desired_cuisine):
+                if fits_search_criteria(restaurant, desired_location, desired_cuisine, url):
                     print("We found a restaurant for you!")
                     print("Name: ", restaurant.name)
                     print("Address: ", restaurant.address)
+                    print("Url: ", restaurant.url)
+                    webbrowser.open(restaurant.url)
                     os._exit(1)
                     return restaurant
             elif four_stars_or_less(review):
@@ -81,6 +84,7 @@ def find_user_reviews(url):
 
 def make_restaurant_obj(restaurant_info):
     name = restaurant_info.find(class_ = "biz-name js-analytics-click").text
+    url = 'https://www.yelp.com/' + restaurant_info.find(class_ = "biz-name js-analytics-click")['href']
     address = restaurant_info.find("address").text.replace("    ","")
     categories = restaurant_info.find_all(class_ = "category-str-list")
     category_list = []
@@ -88,14 +92,14 @@ def make_restaurant_obj(restaurant_info):
         category = category.text.replace("\n                    ","")
         category = category.replace("\n","")
         category_list.append(category)
-    restaurant = Restaurant(name, address, category_list)
+    restaurant = Restaurant(name, address, category_list, url)
     return restaurant
 
-def fits_search_criteria(restaurant, desired_location, desired_cuisine):
+def fits_search_criteria(restaurant, desired_location, desired_cuisine, url):
     if desired_location in restaurant.address:
         for category in restaurant.categories:
             if desired_cuisine in category:
-                if 'CLOSED' not in restaurant.name:
+                if 'CLOSED' not in restaurant.name and restaurant.url != url:
                     return True
     return False
 
